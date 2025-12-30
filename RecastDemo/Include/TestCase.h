@@ -19,6 +19,8 @@
 #ifndef TESTCASE_H
 #define TESTCASE_H
 
+#include <cstdio>
+#include <cstdint>
 #include <string>
 #include "DetourNavMesh.h"
 
@@ -88,8 +90,14 @@ class TestCase
 	std::string m_sampleName;
 	std::string m_geomFileName;
 	Test* m_tests;
+	std::uint64_t m_queuePushesTotal;
+	std::uint64_t m_queuePopsTotal;
+	std::uint64_t m_queuePushesPerIter;
+	std::uint64_t m_queuePopsPerIter;
+	bool m_queueCountsVaried;
 	
 	void resetTimes();
+	void runOnce(class dtNavMesh* navmesh, class dtNavMeshQuery* navquery);
 	
 public:
 	TestCase();
@@ -101,6 +109,9 @@ public:
 	const std::string& getGeomFileName() const { return m_geomFileName; }
 	
 	void doTests(class dtNavMesh* navmesh, class dtNavMeshQuery* navquery);
+	void runBenchmark(class dtNavMesh* navmesh, class dtNavMeshQuery* navquery, int iterations);
+	void printResults(FILE* out, int iterations, bool printPaths) const;
+	void doBenchmark(class dtNavMesh* navmesh, class dtNavMeshQuery* navquery, int iterations, FILE* out, bool printPaths);
 	
 	void handleRender();
 	bool handleRenderOverlay(double* proj, double* model, int* view);

@@ -18,6 +18,12 @@
 
 #include <cstdio>
 #include <cmath>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#ifdef _WIN32
+#	include <windows.h>
+#endif
 
 #include "SDL.h"
 #include "SDL_opengl.h"
@@ -68,8 +74,303 @@ static SampleItem g_samples[] =
 };
 static const int g_nsamples = sizeof(g_samples) / sizeof(SampleItem);
 
-int main(int /*argc*/, char** /*argv*/)
+struct CmdArgs
 {
+	bool hasOptions;
+	bool showHelp;
+	bool runBenchmark;
+	bool quiet;
+	int iterations;
+	string testCasePath;
+	string meshesPath;
+	string outputPath;
+};
+
+static bool streq(const char* a, const char* b)
+{
+	return a && b && strcmp(a, b) == 0;
+}
+
+static string dirName(const string& path)
+{
+	const size_t pos = path.find_last_of("/\\");
+	if (pos == string::npos)
+		return ".";
+	return path.substr(0, pos);
+}
+
+static string baseName(const string& path)
+{
+	const size_t pos = path.find_last_of("/\\");
+	if (pos == string::npos)
+		return path;
+	return path.substr(pos + 1);
+}
+
+static bool iequals(const string& a, const string& b)
+{
+	if (a.size() != b.size())
+		return false;
+	for (size_t i = 0; i < a.size(); ++i)
+	{
+		if ((char)tolower((unsigned char)a[i]) != (char)tolower((unsigned char)b[i]))
+			return false;
+	}
+	return true;
+}
+
+static string defaultMeshesDir(const string& testCasePath)
+{
+	const string testDir = dirName(testCasePath);
+	const string testDirName = baseName(testDir);
+	if (iequals(testDirName, "TestCases"))
+		return dirName(testDir) + "/Meshes";
+	return "Meshes";
+}
+
+static void printUsage(const char* prog)
+{
+	const char* exe = prog ? prog : "RecastDemo";
+	printf("Usage:\n");
+	printf("  %s --benchmark <testcase> [--iterations N] [--meshes <dir>] [--out <file>] [--quiet]\n", exe);
+	printf("  %s --help\n", exe);
+}
+
+static bool parseArgs(int argc, char** argv, CmdArgs& out, string& err)
+{
+	out.hasOptions = false;
+	out.showHelp = false;
+	out.runBenchmark = false;
+	out.quiet = false;
+	out.iterations = 1;
+	out.testCasePath.clear();
+	out.meshesPath.clear();
+	out.outputPath.clear();
+
+	for (int i = 1; i < argc; ++i)
+	{
+		const char* arg = argv[i];
+		if (!arg || arg[0] != '-')
+		{
+			err = "Unexpected argument.";
+			return false;
+		}
+		out.hasOptions = true;
+
+		if (streq(arg, "--help") || streq(arg, "-h"))
+		{
+			out.showHelp = true;
+			return true;
+		}
+		else if (streq(arg, "--quiet") || streq(arg, "-q"))
+		{
+			out.quiet = true;
+		}
+		else if (streq(arg, "--benchmark") || streq(arg, "-b"))
+		{
+			if (i + 1 >= argc)
+			{
+				err = "--benchmark requires a test case path.";
+				return false;
+			}
+			out.runBenchmark = true;
+			out.testCasePath = argv[++i];
+		}
+		else if (streq(arg, "--iterations") || streq(arg, "-n"))
+		{
+			if (i + 1 >= argc)
+			{
+				err = "--iterations requires a value.";
+				return false;
+			}
+			out.iterations = atoi(argv[++i]);
+			if (out.iterations < 1)
+			{
+				err = "--iterations must be >= 1.";
+				return false;
+			}
+		}
+		else if (streq(arg, "--meshes"))
+		{
+			if (i + 1 >= argc)
+			{
+				err = "--meshes requires a directory path.";
+				return false;
+			}
+			out.meshesPath = argv[++i];
+		}
+		else if (streq(arg, "--out"))
+		{
+			if (i + 1 >= argc)
+			{
+				err = "--out requires a file path.";
+				return false;
+			}
+			out.outputPath = argv[++i];
+		}
+		else
+		{
+			err = "Unknown option.";
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static int runBenchmark(const CmdArgs& args)
+{
+	if (args.testCasePath.empty())
+	{
+		printf("Missing test case path.\n");
+		return 1;
+	}
+
+#ifdef _WIN32
+	bool consoleAttached = AttachConsole(ATTACH_PARENT_PROCESS) != 0;
+	bool consoleAllocated = false;
+	if (!consoleAttached)
+		consoleAllocated = AllocConsole() != 0;
+	if (consoleAttached || consoleAllocated)
+	{
+		freopen("CONOUT$", "w", stdout);
+		freopen("CONOUT$", "w", stderr);
+		setvbuf(stdout, 0, _IONBF, 0);
+		setvbuf(stderr, 0, _IONBF, 0);
+	}
+#endif
+
+	BuildContext ctx;
+	TestCase test;
+	if (!test.load(args.testCasePath))
+	{
+		printf("Failed to load test case: %s\n", args.testCasePath.c_str());
+		return 1;
+	}
+
+	Sample* sample = 0;
+	for (int i = 0; i < g_nsamples; ++i)
+	{
+		if (g_samples[i].name == test.getSampleName())
+		{
+			sample = g_samples[i].create();
+			break;
+		}
+	}
+	if (!sample)
+	{
+		printf("Unknown sample: %s\n", test.getSampleName().c_str());
+		return 1;
+	}
+	sample->setContext(&ctx);
+
+	string meshesDir = args.meshesPath;
+	if (meshesDir.empty())
+		meshesDir = defaultMeshesDir(args.testCasePath);
+
+	const string meshPath = meshesDir + "/" + test.getGeomFileName();
+	InputGeom* geom = new InputGeom;
+	if (!geom || !geom->load(&ctx, meshPath))
+	{
+		printf("Failed to load mesh: %s\n", meshPath.c_str());
+		ctx.dumpLog("Geom load log %s:", meshPath.c_str());
+		delete geom;
+		delete sample;
+		return 1;
+	}
+
+	sample->handleMeshChanged(geom);
+	sample->handleSettings();
+
+	ctx.resetLog();
+	if (!sample->handleBuild())
+	{
+		ctx.dumpLog("Build log %s:", meshPath.c_str());
+		delete geom;
+		delete sample;
+		return 1;
+	}
+
+	if (!sample->getNavMesh() || !sample->getNavMeshQuery())
+	{
+		printf("Navmesh build failed.\n");
+		delete geom;
+		delete sample;
+		return 1;
+	}
+
+	printf("Running benchmark:\n");
+	printf("  Test case:  %s\n", args.testCasePath.c_str());
+	printf("  Mesh:       %s\n", meshPath.c_str());
+	printf("  Iterations: %d\n", args.iterations);
+	printf("  Quiet:      %s\n", args.quiet ? "yes" : "no");
+
+	FILE* out = stdout;
+	if (!args.outputPath.empty())
+	{
+		out = fopen(args.outputPath.c_str(), "wb");
+		if (!out)
+		{
+			printf("Failed to open output file: %s\n", args.outputPath.c_str());
+			delete geom;
+			delete sample;
+			return 1;
+		}
+	}
+
+	printf("A* start\n");
+	test.runBenchmark(sample->getNavMesh(), sample->getNavMeshQuery(), args.iterations);
+	printf("A* end\n");
+
+	printf("Output write start\n");
+	test.printResults(out, args.iterations, !args.quiet);
+	fflush(out);
+	printf("Output write end\n");
+
+	if (out != stdout)
+	{
+		fclose(out);
+		printf("Results written to: %s\n", args.outputPath.c_str());
+	}
+	printf("\n");
+
+	delete geom;
+	delete sample;
+#ifdef _WIN32
+	if (consoleAttached || consoleAllocated)
+	{
+		fflush(stdout);
+		fflush(stderr);
+		FreeConsole();
+	}
+#endif
+	return 0;
+}
+
+int main(int argc, char** argv)
+{
+	CmdArgs args;
+	string parseError;
+	if (!parseArgs(argc, argv, args, parseError))
+	{
+		printUsage(argv ? argv[0] : 0);
+		if (!parseError.empty())
+			printf("Error: %s\n", parseError.c_str());
+		return 1;
+	}
+	if (args.showHelp)
+	{
+		printUsage(argv ? argv[0] : 0);
+		return 0;
+	}
+	if (args.runBenchmark)
+		return runBenchmark(args);
+	if (args.hasOptions)
+	{
+		printUsage(argv ? argv[0] : 0);
+		return 1;
+	}
+
 	// Init SDL
 	if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
 	{

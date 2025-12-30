@@ -20,7 +20,9 @@
 #define DETOURNAVMESHQUERY_H
 
 #include "DetourNavMesh.h"
+#include "DetourNode.h"
 #include "DetourStatus.h"
+#include <cstdint>
 
 
 // Define DT_VIRTUAL_QUERYFILTER if you wish to derive a custom filter from dtQueryFilter.
@@ -173,6 +175,9 @@ public:
 	///  @param[in]		maxNodes	Maximum number of search nodes. [Limits: 0 < value <= 65535]
 	/// @returns The status flags for the query.
 	dtStatus init(const dtNavMesh* nav, const int maxNodes);
+
+	void resetQueueIterationCounters();
+	void getQueueIterationCounters(std::uint64_t& pushes, std::uint64_t& pops) const;
 	
 	/// @name Standard Pathfinding Functions
 	/// @{
@@ -494,6 +499,7 @@ public:
 	/// Gets the height of the polygon at the provided position using the height detail. (Most accurate.)
 	///  @param[in]		ref			The reference id of the polygon.
 	///  @param[in]		pos			A position within the xz-bounds of the polygon. [(x, y, z)]
+
 	///  @param[out]	height		The height at the surface of the polygon.
 	/// @returns The status flags for the query.
 	dtStatus getPolyHeight(dtPolyRef ref, const float* pos, float* height) const;
@@ -523,6 +529,9 @@ public:
 	/// @}
 	
 private:
+	inline void queuePush(dtNode* node) const;
+	inline dtNode* queuePop() const;
+
 	// Explicitly disabled copy constructor and copy assignment operator
 	dtNavMeshQuery(const dtNavMeshQuery&);
 	dtNavMeshQuery& operator=(const dtNavMeshQuery&);
@@ -532,6 +541,9 @@ private:
 							 const dtQueryFilter* filter, dtPolyQuery* query) const;
 
 	/// Returns portal points between two polygons.
+	mutable std::uint64_t m_queuePushes;
+	mutable std::uint64_t m_queuePops;
+
 	dtStatus getPortalPoints(dtPolyRef from, dtPolyRef to, float* left, float* right,
 							 unsigned char& fromType, unsigned char& toType) const;
 	dtStatus getPortalPoints(dtPolyRef from, const dtPoly* fromPoly, const dtMeshTile* fromTile,

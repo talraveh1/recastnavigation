@@ -39,7 +39,12 @@
 #endif
 
 TestCase::TestCase() :
-	m_tests(0)
+	m_tests(0),
+	m_queuePushesTotal(0),
+	m_queuePopsTotal(0),
+	m_queuePushesPerIter(0),
+	m_queuePopsPerIter(0),
+	m_queueCountsVaried(false)
 {
 }
 
@@ -194,13 +199,11 @@ void TestCase::resetTimes()
 	}
 }
 
-void TestCase::doTests(dtNavMesh* navmesh, dtNavMeshQuery* navquery)
+void TestCase::runOnce(dtNavMesh* navmesh, dtNavMeshQuery* navquery)
 {
 	if (!navmesh || !navquery)
 		return;
-	
-	resetTimes();
-	
+
 	static const int MAX_POLYS = 256;
 	dtPolyRef polys[MAX_POLYS];
 	float straight[MAX_POLYS*3];
@@ -310,19 +313,102 @@ void TestCase::doTests(dtNavMesh* navmesh, dtNavMeshQuery* navquery)
 			}
 		}
 	}
+}
 
+void TestCase::printResults(FILE* out, int iterations, bool printPaths) const
+{
+	if (!out)
+		return;
+	if (iterations < 1)
+		iterations = 1;
 
-	printf("Test Results:\n");
+	const float iters = (float)iterations;
+	int totalAll = 0;
+
+	fprintf(out, "Test Results (%d iteration%s):\n", iterations, iterations == 1 ? "" : "s");
 	int n = 0;
 	for (Test* iter = m_tests; iter; iter = iter->next)
 	{
 		const int total = iter->findNearestPolyTime + iter->findPathTime + iter->findStraightPathTime;
-		printf(" - Path %02d:     %.4f ms\n", n, (float)total/1000.0f);
-		printf("    - poly:     %.4f ms\n", (float)iter->findNearestPolyTime/1000.0f);
-		printf("    - path:     %.4f ms\n", (float)iter->findPathTime/1000.0f);
-		printf("    - straight: %.4f ms\n", (float)iter->findStraightPathTime/1000.0f);
+		totalAll += total;
+
+		if (printPaths)
+		{
+			fprintf(out, " - Path %02d:     %.4f ms (avg %.4f ms)\n", n, (float)total/1000.0f, (float)total/1000.0f/iters);
+			fprintf(out, "    - poly:     %.4f ms (avg %.4f ms)\n", (float)iter->findNearestPolyTime/1000.0f, (float)iter->findNearestPolyTime/1000.0f/iters);
+			fprintf(out, "    - path:     %.4f ms (avg %.4f ms)\n", (float)iter->findPathTime/1000.0f, (float)iter->findPathTime/1000.0f/iters);
+			fprintf(out, "    - straight: %.4f ms (avg %.4f ms)\n", (float)iter->findStraightPathTime/1000.0f, (float)iter->findStraightPathTime/1000.0f/iters);
+		}
 		n++;
 	}
+
+	if (n > 0)
+		fprintf(out, "Total: %.4f ms (avg %.4f ms)\n", (float)totalAll/1000.0f, (float)totalAll/1000.0f/iters);
+
+	const double pushAvg = iters > 0 ? (double)m_queuePushesTotal / iters : 0.0;
+	const double popAvg = iters > 0 ? (double)m_queuePopsTotal / iters : 0.0;
+	fprintf(out, "Queue ops: pushes %llu (avg %.2f), pops %llu (avg %.2f)\n",
+		(unsigned long long)m_queuePushesTotal, pushAvg,
+		(unsigned long long)m_queuePopsTotal, popAvg);
+
+	const char* varianceNote = m_queueCountsVaried ? " (varies between iterations)" : "";
+	fprintf(out, "Queue ops per iteration: pushes %llu, pops %llu%s\n",
+		(unsigned long long)m_queuePushesPerIter,
+		(unsigned long long)m_queuePopsPerIter,
+		varianceNote);
+}
+
+void TestCase::doTests(dtNavMesh* navmesh, dtNavMeshQuery* navquery)
+{
+	runBenchmark(navmesh, navquery, 1);
+	printResults(stdout, 1, true);
+}
+
+void TestCase::runBenchmark(dtNavMesh* navmesh, dtNavMeshQuery* navquery, int iterations)
+{
+	if (iterations < 1)
+		iterations = 1;
+
+	resetTimes();
+	m_queuePushesTotal = 0;
+	m_queuePopsTotal = 0;
+	m_queuePushesPerIter = 0;
+	m_queuePopsPerIter = 0;
+	m_queueCountsVaried = false;
+
+	for (int i = 0; i < iterations; ++i)
+	{
+		if (navquery)
+			navquery->resetQueueIterationCounters();
+
+		runOnce(navmesh, navquery);
+
+		if (navquery)
+		{
+			std::uint64_t pushes = 0;
+			std::uint64_t pops = 0;
+			navquery->getQueueIterationCounters(pushes, pops);
+
+			if (i == 0)
+			{
+				m_queuePushesPerIter = pushes;
+				m_queuePopsPerIter = pops;
+			}
+			else if (pushes != m_queuePushesPerIter || pops != m_queuePopsPerIter)
+			{
+				m_queueCountsVaried = true;
+			}
+
+			m_queuePushesTotal += pushes;
+			m_queuePopsTotal += pops;
+		}
+	}
+}
+
+void TestCase::doBenchmark(dtNavMesh* navmesh, dtNavMeshQuery* navquery, int iterations, FILE* out, bool printPaths)
+{
+	runBenchmark(navmesh, navquery, iterations);
+	printResults(out ? out : stdout, iterations, printPaths);
 }
 
 void TestCase::handleRender()

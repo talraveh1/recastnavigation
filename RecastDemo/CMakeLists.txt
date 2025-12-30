@@ -36,6 +36,7 @@ endif()
 
 if (WIN32)
     add_executable(RecastDemo WIN32 ${SOURCES})
+    add_executable(RecastDemoCLI ${SOURCES})
 elseif(APPLE)
     add_executable(RecastDemo MACOSX_BUNDLE ${SOURCES})
 else()
@@ -46,18 +47,32 @@ if( WIN32 )
   if ( "${CMAKE_MAKE_PROGRAM}" MATCHES "MSBuild" )
     add_custom_command(TARGET RecastDemo
       POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy "${SDL2_RUNTIME_LIBRARY}" ${CMAKE_BINARY_DIR}/RecastDemo/$(ConfigurationName)/
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/Meshes ${CMAKE_BINARY_DIR}/RecastDemo/$(ConfigurationName)/Meshes
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/TestCases ${CMAKE_BINARY_DIR}/RecastDemo/$(ConfigurationName)/TestCases
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Bin/DroidSans.ttf ${CMAKE_BINARY_DIR}/RecastDemo/$(ConfigurationName)/
+      COMMAND ${CMAKE_COMMAND} -E copy "${SDL2_RUNTIME_LIBRARY}" $<TARGET_FILE_DIR:RecastDemo>/
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/Meshes $<TARGET_FILE_DIR:RecastDemo>/Meshes
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/TestCases $<TARGET_FILE_DIR:RecastDemo>/TestCases
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Bin/DroidSans.ttf $<TARGET_FILE_DIR:RecastDemo>/
+    )
+    add_custom_command(TARGET RecastDemoCLI
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy "${SDL2_RUNTIME_LIBRARY}" $<TARGET_FILE_DIR:RecastDemoCLI>/
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/Meshes $<TARGET_FILE_DIR:RecastDemoCLI>/Meshes
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/TestCases $<TARGET_FILE_DIR:RecastDemoCLI>/TestCases
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Bin/DroidSans.ttf $<TARGET_FILE_DIR:RecastDemoCLI>/
     )
   elseif ( MINGW )
     add_custom_command(TARGET RecastDemo
       POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy "${SDL2_RUNTIME_LIBRARY}" ${CMAKE_BINARY_DIR}/RecastDemo/
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/Meshes ${CMAKE_BINARY_DIR}/RecastDemo/Meshes
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/TestCases ${CMAKE_BINARY_DIR}/RecastDemo/TestCases
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Bin/DroidSans.ttf ${CMAKE_BINARY_DIR}/RecastDemo/
+      COMMAND ${CMAKE_COMMAND} -E copy "${SDL2_RUNTIME_LIBRARY}" $<TARGET_FILE_DIR:RecastDemo>/
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/Meshes $<TARGET_FILE_DIR:RecastDemo>/Meshes
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/TestCases $<TARGET_FILE_DIR:RecastDemo>/TestCases
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Bin/DroidSans.ttf $<TARGET_FILE_DIR:RecastDemo>/
+    )
+    add_custom_command(TARGET RecastDemoCLI
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy "${SDL2_RUNTIME_LIBRARY}" $<TARGET_FILE_DIR:RecastDemoCLI>/
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/Meshes $<TARGET_FILE_DIR:RecastDemoCLI>/Meshes
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Bin/TestCases $<TARGET_FILE_DIR:RecastDemoCLI>/TestCases
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Bin/DroidSans.ttf $<TARGET_FILE_DIR:RecastDemoCLI>/
     )
   endif()
 else()
@@ -68,16 +83,26 @@ endif()
 
 
 add_dependencies(RecastDemo DebugUtils Detour DetourCrowd DetourTileCache Recast)
+if (WIN32)
+  add_dependencies(RecastDemoCLI DebugUtils Detour DetourCrowd DetourTileCache Recast)
+endif()
 if(APPLE)
   target_link_libraries(RecastDemo ${OPENGL_LIBRARIES} ${SDL2_LIBRARY} DebugUtils Detour DetourCrowd DetourTileCache Recast)
 else()
   target_link_libraries(RecastDemo ${OPENGL_LIBRARIES} SDL2::SDL2main DebugUtils Detour DetourCrowd DetourTileCache Recast)
+endif()
+if (WIN32)
+  target_link_libraries(RecastDemoCLI ${OPENGL_LIBRARIES} SDL2::SDL2main DebugUtils Detour DetourCrowd DetourTileCache Recast)
 endif()
 
 
 install(TARGETS RecastDemo
         RUNTIME DESTINATION bin
         BUNDLE DESTINATION bin)
+if (WIN32)
+  install(TARGETS RecastDemoCLI
+          RUNTIME DESTINATION bin)
+endif()
 install(DIRECTORY Bin/Meshes DESTINATION bin)
 install(DIRECTORY Bin/TestCases DESTINATION bin)
 install(FILES Bin/DroidSans.ttf DESTINATION bin)

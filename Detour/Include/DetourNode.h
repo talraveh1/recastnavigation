@@ -110,7 +110,7 @@ class dtNodeQueue
 public:
 	dtNodeQueue(int n);
 	~dtNodeQueue();
-	
+
 	inline void clear() { m_size = 0; }
 	
 	inline dtNode* top() { return m_heap[0]; }

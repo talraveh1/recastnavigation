@@ -49,7 +49,12 @@ Docs/html
 
 ## CMake build cache
 build
+build-vcpkg
+Debug
 
 ## IDE files
 .idea/
 cmake-build-*/
+
+## Benchmark output files
+benchmark_*

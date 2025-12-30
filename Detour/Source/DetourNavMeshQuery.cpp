@@ -1,4 +1,3 @@
-//
 // Copyright (c) 2009-2010 Mikko Mononen memon@inside.org
 //
 // This software is provided 'as-is', without any express or implied
@@ -144,7 +143,9 @@ dtNavMeshQuery::dtNavMeshQuery() :
 	m_nav(0),
 	m_tinyNodePool(0),
 	m_nodePool(0),
-	m_openList(0)
+	m_openList(0),
+	m_queuePushes(0),
+	m_queuePops(0)
 {
 	memset(&m_query, 0, sizeof(dtQueryData));
 }
@@ -221,6 +222,30 @@ dtStatus dtNavMeshQuery::init(const dtNavMesh* nav, const int maxNodes)
 	}
 	
 	return DT_SUCCESS;
+}
+
+void dtNavMeshQuery::resetQueueIterationCounters()
+{
+	m_queuePushes = 0;
+	m_queuePops = 0;
+}
+
+void dtNavMeshQuery::getQueueIterationCounters(std::uint64_t& pushes, std::uint64_t& pops) const
+{
+	pushes = m_queuePushes;
+	pops = m_queuePops;
+}
+
+inline void dtNavMeshQuery::queuePush(dtNode* node) const
+{
+	++m_queuePushes;
+	m_openList->push(node);
+}
+
+inline dtNode* dtNavMeshQuery::queuePop() const
+{
+	++m_queuePops;
+	return m_openList->pop();
 }
 
 dtStatus dtNavMeshQuery::findRandomPoint(const dtQueryFilter* filter, float (*frand)(),
@@ -347,7 +372,7 @@ dtStatus dtNavMeshQuery::findRandomPointAroundCircle(dtPolyRef startRef, const f
 	startNode->total = 0;
 	startNode->id = startRef;
 	startNode->flags = DT_NODE_OPEN;
-	m_openList->push(startNode);
+	queuePush(startNode);
 	
 	dtStatus status = DT_SUCCESS;
 	
@@ -360,7 +385,7 @@ dtStatus dtNavMeshQuery::findRandomPointAroundCircle(dtPolyRef startRef, const f
 
 	while (!m_openList->empty())
 	{
-		dtNode* bestNode = m_openList->pop();
+		dtNode* bestNode = queuePop();
 		bestNode->flags &= ~DT_NODE_OPEN;
 		bestNode->flags |= DT_NODE_CLOSED;
 		
@@ -464,7 +489,7 @@ dtStatus dtNavMeshQuery::findRandomPointAroundCircle(dtPolyRef startRef, const f
 			else
 			{
 				neighbourNode->flags = DT_NODE_OPEN;
-				m_openList->push(neighbourNode);
+				queuePush(neighbourNode);
 			}
 		}
 	}
@@ -1010,7 +1035,7 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 	startNode->total = dtVdist(startPos, endPos) * H_SCALE;
 	startNode->id = startRef;
 	startNode->flags = DT_NODE_OPEN;
-	m_openList->push(startNode);
+	queuePush(startNode);
 	
 	dtNode* lastBestNode = startNode;
 	float lastBestNodeCost = startNode->total;
@@ -1020,7 +1045,7 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 	while (!m_openList->empty())
 	{
 		// Remove node from open list and put it in closed list.
-		dtNode* bestNode = m_openList->pop();
+		dtNode* bestNode = queuePop();
 		bestNode->flags &= ~DT_NODE_OPEN;
 		bestNode->flags |= DT_NODE_CLOSED;
 		
@@ -1141,7 +1166,7 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 			{
 				// Put the node in open list.
 				neighbourNode->flags |= DT_NODE_OPEN;
-				m_openList->push(neighbourNode);
+				queuePush(neighbourNode);
 			}
 			
 			// Update nearest node to target so far.
@@ -1268,7 +1293,7 @@ dtStatus dtNavMeshQuery::initSlicedFindPath(dtPolyRef startRef, dtPolyRef endRef
 	startNode->total = dtVdist(startPos, endPos) * H_SCALE;
 	startNode->id = startRef;
 	startNode->flags = DT_NODE_OPEN;
-	m_openList->push(startNode);
+	queuePush(startNode);
 	
 	m_query.status = DT_IN_PROGRESS;
 	m_query.lastBestNode = startNode;
@@ -1298,7 +1323,7 @@ dtStatus dtNavMeshQuery::updateSlicedFindPath(const int maxIter, int* doneIters)
 		iter++;
 		
 		// Remove node from open list and put it in closed list.
-		dtNode* bestNode = m_openList->pop();
+		dtNode* bestNode = queuePop();
 		bestNode->flags &= ~DT_NODE_OPEN;
 		bestNode->flags |= DT_NODE_CLOSED;
 		
@@ -1469,7 +1494,7 @@ dtStatus dtNavMeshQuery::updateSlicedFindPath(const int maxIter, int* doneIters)
 			{
 				// Put the node in open list.
 				neighbourNode->flags |= DT_NODE_OPEN;
-				m_openList->push(neighbourNode);
+				queuePush(neighbourNode);
 			}
 			
 			// Update nearest node to target so far.
@@ -2755,7 +2780,7 @@ dtStatus dtNavMeshQuery::findPolysAroundCircle(dtPolyRef startRef, const float* 
 	startNode->total = 0;
 	startNode->id = startRef;
 	startNode->flags = DT_NODE_OPEN;
-	m_openList->push(startNode);
+	queuePush(startNode);
 	
 	dtStatus status = DT_SUCCESS;
 	
@@ -2765,7 +2790,7 @@ dtStatus dtNavMeshQuery::findPolysAroundCircle(dtPolyRef startRef, const float* 
 	
 	while (!m_openList->empty())
 	{
-		dtNode* bestNode = m_openList->pop();
+		dtNode* bestNode = queuePop();
 		bestNode->flags &= ~DT_NODE_OPEN;
 		bestNode->flags |= DT_NODE_CLOSED;
 		
@@ -2865,7 +2890,7 @@ dtStatus dtNavMeshQuery::findPolysAroundCircle(dtPolyRef startRef, const float* 
 			else
 			{
 				neighbourNode->flags = DT_NODE_OPEN;
-				m_openList->push(neighbourNode);
+				queuePush(neighbourNode);
 			}
 		}
 	}
@@ -2937,7 +2962,7 @@ dtStatus dtNavMeshQuery::findPolysAroundShape(dtPolyRef startRef, const float* v
 	startNode->total = 0;
 	startNode->id = startRef;
 	startNode->flags = DT_NODE_OPEN;
-	m_openList->push(startNode);
+	queuePush(startNode);
 	
 	dtStatus status = DT_SUCCESS;
 
@@ -2945,7 +2970,7 @@ dtStatus dtNavMeshQuery::findPolysAroundShape(dtPolyRef startRef, const float* v
 	
 	while (!m_openList->empty())
 	{
-		dtNode* bestNode = m_openList->pop();
+		dtNode* bestNode = queuePop();
 		bestNode->flags &= ~DT_NODE_OPEN;
 		bestNode->flags |= DT_NODE_CLOSED;
 		
@@ -3048,7 +3073,7 @@ dtStatus dtNavMeshQuery::findPolysAroundShape(dtPolyRef startRef, const float* v
 			else
 			{
 				neighbourNode->flags = DT_NODE_OPEN;
-				m_openList->push(neighbourNode);
+				queuePush(neighbourNode);
 			}
 		}
 	}
@@ -3500,7 +3525,7 @@ dtStatus dtNavMeshQuery::findDistanceToWall(dtPolyRef startRef, const float* cen
 	startNode->total = 0;
 	startNode->id = startRef;
 	startNode->flags = DT_NODE_OPEN;
-	m_openList->push(startNode);
+	queuePush(startNode);
 	
 	float radiusSqr = dtSqr(maxRadius);
 	
@@ -3508,7 +3533,7 @@ dtStatus dtNavMeshQuery::findDistanceToWall(dtPolyRef startRef, const float* cen
 	
 	while (!m_openList->empty())
 	{
-		dtNode* bestNode = m_openList->pop();
+		dtNode* bestNode = queuePop();
 		bestNode->flags &= ~DT_NODE_OPEN;
 		bestNode->flags |= DT_NODE_CLOSED;
 		
@@ -3646,7 +3671,7 @@ dtStatus dtNavMeshQuery::findDistanceToWall(dtPolyRef startRef, const float* cen
 			else
 			{
 				neighbourNode->flags |= DT_NODE_OPEN;
-				m_openList->push(neighbourNode);
+				queuePush(neighbourNode);
 			}
 		}
 	}
